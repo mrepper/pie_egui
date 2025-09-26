@@ -4,7 +4,7 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use std::process;
 
 use eframe::egui::{self, Shape};
-use egui::{Color32, Pos2, Stroke};
+use egui::{Color32, Pos2, Stroke, Ui};
 use num2words::Num2Words;
 
 const MAX_PIECES: usize = 1000;
@@ -32,6 +32,96 @@ impl TemplateApp {
             Default::default()
         }
     }
+
+    fn draw_circle(&self, ui: &Ui) {
+        let rect = ui.available_rect_before_wrap();
+        let side = rect.width().min(rect.height());
+        let square_rect = egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(side));
+        let painter = ui.painter_at(square_rect);
+        let center = square_rect.center();
+        let radius = side * 0.45;
+
+        // background circle
+        painter.circle_filled(center, radius, Color32::from_rgb(30, 30, 30));
+
+        // outline
+        if self.lines_enabled {
+            painter.circle_stroke(center, radius, Stroke::new(2.0, Color32::WHITE));
+        }
+
+        // radial lines with filled "slices"
+        for i in 0..self.n {
+            // ---- filled polygons ----
+            let color = slice_color(i, self.n);
+            if self.n == 1 {
+                painter.circle_filled(center, radius, color);
+            } else {
+                let start_angle = (i as f32) * (TAU / (self.n as f32)) + FRAC_PI_2;
+                let end_angle = ((i + 1) as f32) * (TAU / (self.n as f32)) + FRAC_PI_2;
+
+                // build polygon: center + arc points
+                let mut points = vec![center];
+
+                // number of segments along the arc (for smoother curves)
+                let steps = 32.max((radius as usize) / 10);
+                for j in 0..=steps {
+                    let t = j as f32 / steps as f32;
+                    let angle = start_angle + t * (end_angle - start_angle);
+                    let x = center.x + radius * angle.cos();
+                    let y = center.y + radius * angle.sin();
+                    points.push(Pos2::new(x, y));
+                }
+
+                // draw filled slice
+                painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+            }
+
+            // ---- lines ----
+            if self.lines_enabled {
+                let angle = (i as f32) * (TAU / (self.n as f32)) + FRAC_PI_2;
+                let dx = radius * angle.cos();
+                let dy = radius * angle.sin();
+                let end = Pos2::new(center.x + dx, center.y + dy);
+                if self.n > 1 {
+                    painter.line_segment(
+                        [center, end],
+                        Stroke::new(1.6, Color32::from_rgb(200, 200, 200)),
+                    );
+                }
+            }
+
+            // ---- labels ----
+            let label_distance = radius + 20.0; // push labels outside the circle
+            let label_angle =
+                -(i as f32) * (TAU / (self.n as f32)) + FRAC_PI_2 + (PI / (self.n as f32));
+            let lx = center.x + label_distance * label_angle.cos();
+            let ly = center.y + label_distance * label_angle.sin();
+            let label_pos = Pos2::new(lx, ly);
+            painter.text(
+                label_pos,
+                egui::Align2::CENTER_CENTER,
+                (i + 1).to_string(), // label text
+                egui::FontId::proportional(16.0),
+                Color32::YELLOW,
+            );
+        }
+
+        // painter.circle_stroke(center, radius, Stroke::new(2.0, Color32::WHITE));
+
+        // ordinal text
+        let painter = ui.painter_at(rect);
+        let x = rect.width() * 0.1;
+        let y = 100.0;
+        painter.text(
+            Pos2::new(x, y),
+            egui::Align2::CENTER_CENTER,
+            get_ordinal_text(self.n),
+            egui::FontId::proportional(16.0),
+            Color32::from_rgb(64, 224, 208),
+        );
+
+        // painter.circle_filled(center, 2.0, Color32::from_rgb(220, 100, 100));
+    }
 }
 
 impl Default for TemplateApp {
@@ -40,7 +130,7 @@ impl Default for TemplateApp {
             n_text: "1".to_owned(),
             n: 1,
             error: None,
-            lines_enabled: false,
+            lines_enabled: true,
         }
     }
 }
@@ -52,135 +142,59 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
+                let mut clicked = false;
+
                 ui.label(format!("Enter a number between 1 and {MAX_PIECES}:"));
                 ui.text_edit_singleline(&mut self.n_text);
+
+                ui.separator();
+
                 if ui.button("➕").clicked() && self.n < MAX_PIECES {
-                    self.n_text = format!("{}", self.n + 1);
+                    self.n += 1;
+                    self.n_text = format!("{}", self.n);
+                    clicked = true;
                 };
                 if ui.button("➖").clicked() && self.n > 1 {
-                    self.n_text = format!("{}", self.n - 1);
+                    self.n -= 1;
+                    self.n_text = format!("{}", self.n);
+                    clicked = true;
                 };
+
+                ui.separator();
+
                 if ui.button("Toggle Lines").clicked() {
                     self.lines_enabled = !self.lines_enabled;
+                    clicked = true;
                 };
                 #[cfg(not(target_arch = "wasm32"))]
                 if ui.button("Quit").clicked() {
                     process::exit(0);
                 };
 
-                match self.n_text.trim().parse::<usize>() {
-                    Ok(v) if (1..=MAX_PIECES).contains(&v) => {
-                        self.n = v;
-                        self.error = None;
-                    }
-                    Ok(_) => {
-                        // self.n = MAX_PIECES;
-                        self.error =
-                            Some(format!("N must be between 1 and {MAX_PIECES}").to_owned());
-                    }
-                    Err(_) => {
-                        if self.n_text.trim().is_empty() {
+                if !clicked {
+                    match self.n_text.trim().parse::<usize>() {
+                        Ok(v) if (1..=MAX_PIECES).contains(&v) => {
+                            self.n = v;
                             self.error = None;
-                        } else {
-                            self.error = Some("Invalid integer".to_owned());
+                        }
+                        Ok(_) => {
+                            self.error =
+                                Some(format!("N must be between 1 and {MAX_PIECES}").to_owned());
+                        }
+                        Err(_) => {
+                            if self.n_text.trim().is_empty() {
+                                self.error = None;
+                            } else {
+                                self.error = Some("Invalid integer".to_owned());
+                            }
                         }
                     }
                 }
             });
 
-            // if let Some(err) = &self.error {
-            //     ui.colored_label(Color32::RED, err);
-            // } else {
-            //     ui.colored_label(Color32::YELLOW, get_ordinal_text(self.n));
-            // }
-
             // ui.add_space(8.0);
 
-            let rect = ui.available_rect_before_wrap();
-            let side = rect.width().min(rect.height());
-            let square_rect = egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(side));
-            let painter = ui.painter_at(square_rect);
-            let center = square_rect.center();
-            let radius = side * 0.45;
-
-            // background circle
-            painter.circle_filled(center, radius, Color32::from_rgb(30, 30, 30));
-
-            // outline
-            painter.circle_stroke(center, radius, Stroke::new(2.0, Color32::WHITE));
-
-            // radial lines with filled "slices"
-            for i in 0..self.n {
-                // ---- filled polygons ----
-                let color = slice_color(i, self.n);
-                if self.n == 1 {
-                    painter.circle_filled(center, radius, color);
-                } else {
-                    let start_angle = (i as f32) * (TAU / (self.n as f32)) + FRAC_PI_2;
-                    let end_angle = ((i + 1) as f32) * (TAU / (self.n as f32)) + FRAC_PI_2;
-
-                    // build polygon: center + arc points
-                    let mut points = vec![center];
-
-                    // number of segments along the arc (for smoother curves)
-                    let steps = 32.max((radius as usize) / 10);
-                    for j in 0..=steps {
-                        let t = j as f32 / steps as f32;
-                        let angle = start_angle + t * (end_angle - start_angle);
-                        let x = center.x + radius * angle.cos();
-                        let y = center.y + radius * angle.sin();
-                        points.push(Pos2::new(x, y));
-                    }
-
-                    // draw filled slice
-                    painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
-                }
-
-                // ---- lines ----
-                if self.lines_enabled {
-                    let angle = (i as f32) * (TAU / (self.n as f32)) + FRAC_PI_2;
-                    let dx = radius * angle.cos();
-                    let dy = radius * angle.sin();
-                    let end = Pos2::new(center.x + dx, center.y + dy);
-                    if self.n > 1 {
-                        painter.line_segment(
-                            [center, end],
-                            Stroke::new(1.6, Color32::from_rgb(200, 200, 200)),
-                        );
-                    }
-                }
-
-                // ---- labels ----
-                let label_distance = radius + 20.0; // push labels outside the circle
-                let label_angle =
-                    -(i as f32) * (TAU / (self.n as f32)) + FRAC_PI_2 + (PI / (self.n as f32));
-                let lx = center.x + label_distance * label_angle.cos();
-                let ly = center.y + label_distance * label_angle.sin();
-                let label_pos = Pos2::new(lx, ly);
-                painter.text(
-                    label_pos,
-                    egui::Align2::CENTER_CENTER,
-                    (i + 1).to_string(), // label text
-                    egui::FontId::proportional(16.0),
-                    Color32::YELLOW,
-                );
-            }
-
-            // painter.circle_stroke(center, radius, Stroke::new(2.0, Color32::WHITE));
-
-            // ordinal text
-            let painter = ui.painter_at(rect);
-            let x = rect.width() * 0.1;
-            let y = 100.0;
-            painter.text(
-                Pos2::new(x, y),
-                egui::Align2::CENTER_CENTER,
-                get_ordinal_text(self.n),
-                egui::FontId::proportional(16.0),
-                Color32::from_rgb(64, 224, 208),
-            );
-
-            // painter.circle_filled(center, 2.0, Color32::from_rgb(220, 100, 100));
+            self.draw_circle(ui);
         });
 
         ctx.request_repaint();
@@ -208,10 +222,9 @@ fn slice_color(i: usize, n: usize) -> egui::Color32 {
     } else {
         palette[i % palette.len()]
     }
-    // palette[(i + n) % palette.len()]
 
-    // -- Scheme 3
-    // let intensity = 0.3 + 0.7 * (i as f32 / (self.n as f32 - 1.0).max(1.0));
+    // -- Scheme 3 - shades of blue
+    // let intensity = 0.3 + 0.7 * (i as f32 / (n as f32 - 1.0).max(1.0));
     // egui::Color32::from_rgb(
     //     (intensity * 0.2 * 255.0) as u8,
     //     (intensity * 0.6 * 255.0) as u8,
@@ -226,20 +239,14 @@ fn slice_color(i: usize, n: usize) -> egui::Color32 {
 
 fn get_ordinal_text(n: usize) -> String {
     match n {
-        0 => "?".into(),
         1 => "Whole".into(),
         2 => "Half".into(),
-        // n => {
-        //     let last_num = n.to_string().chars().last().unwrap();
-        //     let suffix = match last_num {
-        //         '1' => "st",
-        //         '2' => "nd",
-        //         '3' => "rd",
-        //         _ => "th",
-        //     };
-        //     format!("{}{}", n, suffix)
-        // }
-        _ => capitalize_string(&Num2Words::new(n as u32).ordinal().to_words().unwrap()),
+        _ => capitalize_string(
+            &Num2Words::new(n as u32)
+                .ordinal()
+                .to_words()
+                .unwrap_or_else(|_| panic!("Num2Words failed for value {n}")),
+        ),
     }
 }
 
