@@ -1,22 +1,21 @@
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::process;
+
+use eframe::egui::{self, Shape};
+use egui::{Color32, Pos2, Stroke};
+use num2words::Num2Words;
+
+const MAX_PIECES: usize = 1000;
+
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
-    // Example stuff:
-    label: String,
-
-    #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
-}
-
-impl Default for TemplateApp {
-    fn default() -> Self {
-        Self {
-            // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
-        }
-    }
+    n_text: String,
+    n: usize,
+    error: Option<String>,
+    lines_enabled: bool,
 }
 
 impl TemplateApp {
@@ -35,75 +34,223 @@ impl TemplateApp {
     }
 }
 
-impl eframe::App for TemplateApp {
-    /// Called by the framework to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
-    }
-
-    /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
-
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            // The top panel is often a good place for a menu bar:
-
-            egui::MenuBar::new().ui(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                    ui.add_space(16.0);
-                }
-
-                egui::widgets::global_theme_preference_buttons(ui);
-            });
-        });
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
-
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
-
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
-            }
-
-            ui.separator();
-
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/main/",
-                "Source code."
-            ));
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                powered_by_egui_and_eframe(ui);
-                egui::warn_if_debug_build(ui);
-            });
-        });
+impl Default for TemplateApp {
+    fn default() -> Self {
+        Self {
+            n_text: "1".to_owned(),
+            n: 1,
+            error: None,
+            lines_enabled: false,
+        }
     }
 }
 
-fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        ui.label("Powered by ");
-        ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-        ui.label(" and ");
-        ui.hyperlink_to(
-            "eframe",
-            "https://github.com/emilk/egui/tree/master/crates/eframe",
-        );
-        ui.label(".");
-    });
+impl eframe::App for TemplateApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Looks better on 4k montior
+        ctx.set_pixels_per_point(1.5);
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(format!("Enter a number between 1 and {MAX_PIECES}:"));
+                ui.text_edit_singleline(&mut self.n_text);
+                if ui.button("➕").clicked() && self.n < MAX_PIECES {
+                    self.n_text = format!("{}", self.n + 1);
+                };
+                if ui.button("➖").clicked() && self.n > 1 {
+                    self.n_text = format!("{}", self.n - 1);
+                };
+                if ui.button("Toggle Lines").clicked() {
+                    self.lines_enabled = !self.lines_enabled;
+                };
+                #[cfg(not(target_arch = "wasm32"))]
+                if ui.button("Quit").clicked() {
+                    process::exit(0);
+                };
+
+                match self.n_text.trim().parse::<usize>() {
+                    Ok(v) if (1..=MAX_PIECES).contains(&v) => {
+                        self.n = v;
+                        self.error = None;
+                    }
+                    Ok(_) => {
+                        // self.n = MAX_PIECES;
+                        self.error =
+                            Some(format!("N must be between 1 and {MAX_PIECES}").to_owned());
+                    }
+                    Err(_) => {
+                        if self.n_text.trim().is_empty() {
+                            self.error = None;
+                        } else {
+                            self.error = Some("Invalid integer".to_owned());
+                        }
+                    }
+                }
+            });
+
+            // if let Some(err) = &self.error {
+            //     ui.colored_label(Color32::RED, err);
+            // } else {
+            //     ui.colored_label(Color32::YELLOW, get_ordinal_text(self.n));
+            // }
+
+            // ui.add_space(8.0);
+
+            let rect = ui.available_rect_before_wrap();
+            let side = rect.width().min(rect.height());
+            let square_rect = egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(side));
+            let painter = ui.painter_at(square_rect);
+            let center = square_rect.center();
+            let radius = side * 0.45;
+
+            // background circle
+            painter.circle_filled(center, radius, Color32::from_rgb(30, 30, 30));
+
+            // outline
+            painter.circle_stroke(center, radius, Stroke::new(2.0, Color32::WHITE));
+
+            // radial lines with filled "slices"
+            for i in 0..self.n {
+                // ---- filled polygons ----
+                let color = slice_color(i, self.n);
+                if self.n == 1 {
+                    painter.circle_filled(center, radius, color);
+                } else {
+                    let start_angle = (i as f32) * (TAU / (self.n as f32)) + FRAC_PI_2;
+                    let end_angle = ((i + 1) as f32) * (TAU / (self.n as f32)) + FRAC_PI_2;
+
+                    // build polygon: center + arc points
+                    let mut points = vec![center];
+
+                    // number of segments along the arc (for smoother curves)
+                    let steps = 32.max((radius as usize) / 10);
+                    for j in 0..=steps {
+                        let t = j as f32 / steps as f32;
+                        let angle = start_angle + t * (end_angle - start_angle);
+                        let x = center.x + radius * angle.cos();
+                        let y = center.y + radius * angle.sin();
+                        points.push(Pos2::new(x, y));
+                    }
+
+                    // draw filled slice
+                    painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+                }
+
+                // ---- lines ----
+                if self.lines_enabled {
+                    let angle = (i as f32) * (TAU / (self.n as f32)) + FRAC_PI_2;
+                    let dx = radius * angle.cos();
+                    let dy = radius * angle.sin();
+                    let end = Pos2::new(center.x + dx, center.y + dy);
+                    if self.n > 1 {
+                        painter.line_segment(
+                            [center, end],
+                            Stroke::new(1.6, Color32::from_rgb(200, 200, 200)),
+                        );
+                    }
+                }
+
+                // ---- labels ----
+                let label_distance = radius + 20.0; // push labels outside the circle
+                let label_angle =
+                    -(i as f32) * (TAU / (self.n as f32)) + FRAC_PI_2 + (PI / (self.n as f32));
+                let lx = center.x + label_distance * label_angle.cos();
+                let ly = center.y + label_distance * label_angle.sin();
+                let label_pos = Pos2::new(lx, ly);
+                painter.text(
+                    label_pos,
+                    egui::Align2::CENTER_CENTER,
+                    (i + 1).to_string(), // label text
+                    egui::FontId::proportional(16.0),
+                    Color32::YELLOW,
+                );
+            }
+
+            // painter.circle_stroke(center, radius, Stroke::new(2.0, Color32::WHITE));
+
+            // ordinal text
+            let painter = ui.painter_at(rect);
+            let x = rect.width() * 0.1;
+            let y = 100.0;
+            painter.text(
+                Pos2::new(x, y),
+                egui::Align2::CENTER_CENTER,
+                get_ordinal_text(self.n),
+                egui::FontId::proportional(16.0),
+                Color32::from_rgb(64, 224, 208),
+            );
+
+            // painter.circle_filled(center, 2.0, Color32::from_rgb(220, 100, 100));
+        });
+
+        ctx.request_repaint();
+    }
+}
+
+fn slice_color(i: usize, n: usize) -> egui::Color32 {
+    // pick a color by cycling hues
+    // -- Scheme 1
+    // let hue = (i as f32) / (n as f32);
+    // egui::epaint::Hsva::new(hue, 0.9, 0.9, 1.0).into()
+
+    // -- Scheme 2
+    let palette = [
+        egui::Color32::from_rgb(31, 119, 180),  // blue
+        egui::Color32::from_rgb(255, 127, 14),  // orange
+        egui::Color32::from_rgb(44, 160, 44),   // green
+        egui::Color32::from_rgb(214, 39, 40),   // red
+        egui::Color32::from_rgb(148, 103, 189), // purple
+        egui::Color32::from_rgb(140, 86, 75),   // brown
+    ];
+    if n > 1 && i == n - 1 && (i + 1) % palette.len() == 1 {
+        // Prevent adjacent slices from being colored the same
+        palette[(i + 1) % palette.len()]
+    } else {
+        palette[i % palette.len()]
+    }
+    // palette[(i + n) % palette.len()]
+
+    // -- Scheme 3
+    // let intensity = 0.3 + 0.7 * (i as f32 / (self.n as f32 - 1.0).max(1.0));
+    // egui::Color32::from_rgb(
+    //     (intensity * 0.2 * 255.0) as u8,
+    //     (intensity * 0.6 * 255.0) as u8,
+    //     (intensity * 0.9 * 255.0) as u8,
+    // )
+
+    // -- Scheme 4
+    // Shades of gray depending on index
+    // let intensity = 200 - (i as u8 * 20 % 150);
+    // egui::Color32::from_rgb(intensity, intensity, intensity)
+}
+
+fn get_ordinal_text(n: usize) -> String {
+    match n {
+        0 => "?".into(),
+        1 => "Whole".into(),
+        2 => "Half".into(),
+        // n => {
+        //     let last_num = n.to_string().chars().last().unwrap();
+        //     let suffix = match last_num {
+        //         '1' => "st",
+        //         '2' => "nd",
+        //         '3' => "rd",
+        //         _ => "th",
+        //     };
+        //     format!("{}{}", n, suffix)
+        // }
+        _ => capitalize_string(&Num2Words::new(n as u32).ordinal().to_words().unwrap()),
+    }
+}
+
+fn capitalize_string(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => {
+            let mut result = first.to_uppercase().collect::<String>();
+            result.push_str(chars.as_str());
+            result
+        }
+    }
 }
