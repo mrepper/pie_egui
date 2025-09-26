@@ -12,9 +12,7 @@ const MAX_PIECES: usize = 1000;
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
-    n_text: String,
     n: usize,
-    error: Option<String>,
     lines_enabled: bool,
 }
 
@@ -40,14 +38,6 @@ impl TemplateApp {
         let painter = ui.painter_at(square_rect);
         let center = square_rect.center();
         let radius = side * 0.45;
-
-        // background circle
-        painter.circle_filled(center, radius, Color32::from_rgb(30, 30, 30));
-
-        // outline
-        if self.lines_enabled {
-            painter.circle_stroke(center, radius, Stroke::new(2.0, Color32::WHITE));
-        }
 
         // radial lines with filled "slices"
         for i in 0..self.n {
@@ -106,7 +96,10 @@ impl TemplateApp {
             );
         }
 
-        // painter.circle_stroke(center, radius, Stroke::new(2.0, Color32::WHITE));
+        // outline
+        if self.lines_enabled {
+            painter.circle_stroke(center, radius, Stroke::new(2.0, Color32::WHITE));
+        }
 
         // ordinal text
         let painter = ui.painter_at(rect);
@@ -120,6 +113,7 @@ impl TemplateApp {
             Color32::from_rgb(64, 224, 208),
         );
 
+        // center dot
         // painter.circle_filled(center, 2.0, Color32::from_rgb(220, 100, 100));
     }
 }
@@ -127,9 +121,7 @@ impl TemplateApp {
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            n_text: "1".to_owned(),
             n: 1,
-            error: None,
             lines_enabled: true,
         }
     }
@@ -142,68 +134,36 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
-                let mut clicked = false;
-
                 ui.label(format!("Enter a number between 1 and {MAX_PIECES}:"));
-                ui.text_edit_singleline(&mut self.n_text);
+                ui.add(egui::Slider::new(&mut self.n, 1..=1000).logarithmic(true));
 
                 ui.separator();
 
                 if ui.button("➕").clicked() && self.n < MAX_PIECES {
                     self.n += 1;
-                    self.n_text = format!("{}", self.n);
-                    clicked = true;
                 };
                 if ui.button("➖").clicked() && self.n > 1 {
                     self.n -= 1;
-                    self.n_text = format!("{}", self.n);
-                    clicked = true;
                 };
 
                 ui.separator();
 
                 if ui.button("Toggle Lines").clicked() {
                     self.lines_enabled = !self.lines_enabled;
-                    clicked = true;
                 };
                 #[cfg(not(target_arch = "wasm32"))]
                 if ui.button("Quit").clicked() {
                     process::exit(0);
                 };
-
-                if !clicked {
-                    match self.n_text.trim().parse::<usize>() {
-                        Ok(v) if (1..=MAX_PIECES).contains(&v) => {
-                            self.n = v;
-                            self.error = None;
-                        }
-                        Ok(_) => {
-                            self.error =
-                                Some(format!("N must be between 1 and {MAX_PIECES}").to_owned());
-                        }
-                        Err(_) => {
-                            if self.n_text.trim().is_empty() {
-                                self.error = None;
-                            } else {
-                                self.error = Some("Invalid integer".to_owned());
-                            }
-                        }
-                    }
-                }
             });
-
-            // ui.add_space(8.0);
 
             self.draw_circle(ui);
         });
-
-        ctx.request_repaint();
     }
 }
 
 fn slice_color(i: usize, n: usize) -> egui::Color32 {
-    // pick a color by cycling hues
-    // -- Scheme 1
+    // -- Scheme 1 - pick a color by cycling hues
     // let hue = (i as f32) / (n as f32);
     // egui::epaint::Hsva::new(hue, 0.9, 0.9, 1.0).into()
 
@@ -231,8 +191,7 @@ fn slice_color(i: usize, n: usize) -> egui::Color32 {
     //     (intensity * 0.9 * 255.0) as u8,
     // )
 
-    // -- Scheme 4
-    // Shades of gray depending on index
+    // -- Scheme 4 - shades of gray depending on index
     // let intensity = 200 - (i as u8 * 20 % 150);
     // egui::Color32::from_rgb(intensity, intensity, intensity)
 }
