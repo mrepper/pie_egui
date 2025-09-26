@@ -129,8 +129,8 @@ impl Default for TemplateApp {
 
 impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Looks better on 4k montior
-        ctx.set_pixels_per_point(1.5);
+        // Looks better on hi-res screens
+        ctx.set_pixels_per_point(2.0);
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
