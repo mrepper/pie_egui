@@ -134,7 +134,7 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(format!("Enter a number between 1 and {MAX_PIECES}:"));
+                ui.label(format!("Choose a number between 1 and {MAX_PIECES}:"));
                 ui.add(egui::Slider::new(&mut self.n, 1..=1000).logarithmic(true));
 
                 ui.separator();
