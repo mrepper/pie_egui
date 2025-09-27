@@ -4,7 +4,8 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use std::process;
 
 use eframe::egui::{self, Shape};
-use egui::{Color32, Pos2, Stroke, Ui, Vec2};
+use egui::text::LayoutJob;
+use egui::{Color32, Pos2, Stroke, TextFormat, Ui, Vec2};
 use num2words::Num2Words;
 
 const MAX_PIECES: usize = 1000;
@@ -17,6 +18,89 @@ pub struct TemplateApp {
     scale_factor: f32,
     scale_factor_str: String,
     central_panel_res: Vec2,
+    color_scheme: ColorScheme,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+enum ColorScheme {
+    Rainbow,
+    Tableau,
+    Blues,
+    Grays,
+}
+
+impl ColorScheme {
+    fn get_slice_color(&self, i: usize, n: usize) -> Color32 {
+        slice_color(i, n, self)
+    }
+}
+
+fn slice_color(i: usize, n: usize, color_scheme: &ColorScheme) -> Color32 {
+    match color_scheme {
+        // -- Scheme 1 - pick a color by cycling hues
+        ColorScheme::Rainbow => {
+            let hue = (i as f32) / (n as f32);
+            egui::epaint::Hsva::new(hue, 0.9, 0.9, 1.0).into()
+        }
+        // -- Scheme 2 - solid colors
+        ColorScheme::Tableau => {
+            let palette = [
+                // Color32::from_rgb(31, 119, 180),  // blue
+                // Color32::from_rgb(255, 127, 14),  // orange
+                // Color32::from_rgb(44, 160, 44),   // green
+                // Color32::from_rgb(214, 39, 40),   // red
+                // Color32::from_rgb(148, 103, 189), // purple
+                // Color32::from_rgb(140, 86, 75),   // brown
+                Color32::from_hex("#5778a4").unwrap_or_default(), // blue
+                Color32::from_hex("#e49444").unwrap_or_default(), // orange
+                Color32::from_hex("#d1615d").unwrap_or_default(), // red
+                Color32::from_hex("#85b6b2").unwrap_or_default(), // teal
+                Color32::from_hex("#6a9f58").unwrap_or_default(), // green
+                Color32::from_hex("#e7ca60").unwrap_or_default(), // yellow
+                Color32::from_hex("#a87c9f").unwrap_or_default(), // purple
+                Color32::from_hex("#f1a2a9").unwrap_or_default(), // pink
+                Color32::from_hex("#967662").unwrap_or_default(), // brown
+                Color32::from_hex("#b8b0ac").unwrap_or_default(), // grey
+            ];
+            if n > 1 && i == n - 1 && (i + 1) % palette.len() == 1 {
+                // Prevent adjacent slices from being colored the same
+                palette[(i + 1) % palette.len()]
+            } else {
+                palette[i % palette.len()]
+            }
+        }
+        // -- Scheme 3 - shades of blue
+        ColorScheme::Blues => {
+            let intensity = 0.3 + 0.7 * (i as f32 / (n as f32 - 1.0).max(1.0));
+            Color32::from_rgb(
+                (intensity * 0.2 * 255.0) as u8,
+                (intensity * 0.6 * 255.0) as u8,
+                (intensity * 0.9 * 255.0) as u8,
+            )
+        }
+        // -- Scheme 4 - shades of gray depending on index
+        ColorScheme::Grays => {
+            let intensity = 200 - (i as u8 * 20 % 150);
+            Color32::from_rgb(intensity, intensity, intensity)
+        }
+    }
+}
+
+fn color_text(text: &str, color_scheme: &ColorScheme) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    for (i, ch) in text.chars().enumerate() {
+        let color = slice_color(i, text.len(), color_scheme);
+        job.append(
+            &ch.to_string(),
+            0.0,
+            TextFormat {
+                color,
+                ..Default::default()
+            },
+        );
+    }
+
+    job
 }
 
 impl TemplateApp {
@@ -41,7 +125,6 @@ impl TemplateApp {
             ui.add(egui::Slider::new(&mut self.n, 1..=1000).logarithmic(true));
 
             ui.separator();
-
             if ui.button("➕").clicked() && self.n < MAX_PIECES {
                 self.n += 1;
             };
@@ -50,10 +133,36 @@ impl TemplateApp {
             };
 
             ui.separator();
-
             if ui.button("Toggle Lines").clicked() {
                 self.lines_enabled = !self.lines_enabled;
             };
+
+            ui.separator();
+            ui.label("Color scheme:");
+            ui.selectable_value(
+                &mut self.color_scheme,
+                ColorScheme::Rainbow,
+                // rainbow_text(),
+                color_text("Pinwheel", &ColorScheme::Rainbow),
+            );
+            ui.selectable_value(
+                &mut self.color_scheme,
+                ColorScheme::Tableau,
+                // egui::RichText::new("Solid").color(Color32::DARK_RED),
+                color_text("Tableau", &ColorScheme::Tableau),
+            );
+            ui.selectable_value(
+                &mut self.color_scheme,
+                ColorScheme::Blues,
+                // egui::RichText::new("Blues").color(Color32::LIGHT_BLUE),
+                color_text("Blues", &ColorScheme::Blues),
+            );
+            ui.selectable_value(
+                &mut self.color_scheme,
+                ColorScheme::Grays,
+                // egui::RichText::new("Grays").color(Color32::GRAY),
+                color_text("Grays", &ColorScheme::Grays),
+            );
 
             #[cfg(not(target_arch = "wasm32"))]
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -98,7 +207,7 @@ impl TemplateApp {
         // radial lines with filled "slices"
         for i in 0..self.n {
             // ---- filled polygons ----
-            let color = slice_color(i, self.n);
+            let color = self.color_scheme.get_slice_color(i, self.n);
             if self.n == 1 {
                 painter.circle_filled(center, radius, color);
             } else {
@@ -206,6 +315,7 @@ impl Default for TemplateApp {
             scale_factor: 1.5,
             scale_factor_str: "1.5".to_owned(),
             central_panel_res: Vec2::new(0.0, 0.0),
+            color_scheme: ColorScheme::Tableau,
         }
     }
 }
@@ -227,40 +337,6 @@ impl eframe::App for TemplateApp {
             self.add_circle(ui);
         });
     }
-}
-
-fn slice_color(i: usize, n: usize) -> egui::Color32 {
-    // -- Scheme 1 - pick a color by cycling hues
-    // let hue = (i as f32) / (n as f32);
-    // egui::epaint::Hsva::new(hue, 0.9, 0.9, 1.0).into()
-
-    // -- Scheme 2
-    let palette = [
-        egui::Color32::from_rgb(31, 119, 180),  // blue
-        egui::Color32::from_rgb(255, 127, 14),  // orange
-        egui::Color32::from_rgb(44, 160, 44),   // green
-        egui::Color32::from_rgb(214, 39, 40),   // red
-        egui::Color32::from_rgb(148, 103, 189), // purple
-        egui::Color32::from_rgb(140, 86, 75),   // brown
-    ];
-    if n > 1 && i == n - 1 && (i + 1) % palette.len() == 1 {
-        // Prevent adjacent slices from being colored the same
-        palette[(i + 1) % palette.len()]
-    } else {
-        palette[i % palette.len()]
-    }
-
-    // -- Scheme 3 - shades of blue
-    // let intensity = 0.3 + 0.7 * (i as f32 / (n as f32 - 1.0).max(1.0));
-    // egui::Color32::from_rgb(
-    //     (intensity * 0.2 * 255.0) as u8,
-    //     (intensity * 0.6 * 255.0) as u8,
-    //     (intensity * 0.9 * 255.0) as u8,
-    // )
-
-    // -- Scheme 4 - shades of gray depending on index
-    // let intensity = 200 - (i as u8 * 20 % 150);
-    // egui::Color32::from_rgb(intensity, intensity, intensity)
 }
 
 fn get_ordinal_text(n: usize) -> String {
