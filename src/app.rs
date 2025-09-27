@@ -4,7 +4,7 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use std::process;
 
 use eframe::egui::{self, Shape};
-use egui::{Color32, Pos2, Stroke, Ui};
+use egui::{Color32, Pos2, Stroke, Ui, Vec2};
 use num2words::Num2Words;
 
 const MAX_PIECES: usize = 1000;
@@ -16,6 +16,7 @@ pub struct TemplateApp {
     lines_enabled: bool,
     scale_factor: f32,
     scale_factor_str: String,
+    central_panel_res: Vec2,
 }
 
 impl TemplateApp {
@@ -33,13 +34,66 @@ impl TemplateApp {
         }
     }
 
-    fn draw_circle(&self, ui: &Ui) {
+    fn add_header(&mut self, ui: &mut Ui) {
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.label(format!("Choose a number between 1 and {MAX_PIECES}:"));
+            ui.add(egui::Slider::new(&mut self.n, 1..=1000).logarithmic(true));
+
+            ui.separator();
+
+            if ui.button("➕").clicked() && self.n < MAX_PIECES {
+                self.n += 1;
+            };
+            if ui.button("➖").clicked() && self.n > 1 {
+                self.n -= 1;
+            };
+
+            ui.separator();
+
+            if ui.button("Toggle Lines").clicked() {
+                self.lines_enabled = !self.lines_enabled;
+            };
+
+            #[cfg(not(target_arch = "wasm32"))]
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Quit").clicked() {
+                    process::exit(0);
+                };
+            });
+
+            // scaling input value (temporary)
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_sized(
+                    [40.0, 20.0],
+                    egui::TextEdit::singleline(&mut self.scale_factor_str),
+                );
+                if let Ok(scale) = self.scale_factor_str.parse::<f32>() {
+                    if (0.5..=4.0).contains(&scale) {
+                        self.scale_factor = scale;
+                    }
+                }
+                ui.label("Scaling:");
+
+                // ui.separator();
+                // let available = ui.available_size();
+                // ui.label(format!(
+                //     "Size: {} x {}",
+                //     available.x.floor(),
+                //     available.y.floor()
+                // ));
+            });
+        });
+        ui.add_space(4.0);
+    }
+
+    fn add_circle(&mut self, ui: &Ui) {
         let rect = ui.available_rect_before_wrap();
         let side = rect.width().min(rect.height());
         let square_rect = egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(side));
         let painter = ui.painter_at(square_rect);
         let center = square_rect.center();
-        let radius = side * 0.40;
+        let radius = side * 0.45;
 
         // radial lines with filled "slices"
         for i in 0..self.n {
@@ -115,8 +169,32 @@ impl TemplateApp {
             Color32::from_rgb(64, 224, 208),
         );
 
+        // dimensions
+        // let painter = ui.painter_at(rect);
+        // let width = rect.width().floor();
+        // let height = rect.height().floor();
+        // painter.text(
+        //     Pos2::new(width * 0.08, height * 0.97),
+        //     egui::Align2::CENTER_CENTER,
+        //     format!("Debug info\nSize: {width} x {height}"),
+        //     egui::FontId::proportional(14.0),
+        //     Color32::from_rgb(50, 50, 50),
+        // );
+        self.central_panel_res = Vec2::new(rect.width(), rect.height());
+
         // center dot
         // painter.circle_filled(center, 2.0, Color32::from_rgb(220, 100, 100));
+    }
+
+    fn add_footer(&self, ui: &mut Ui) {
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            // Show window resolution so I can figure out good default scaling parameters.
+            let available = self.central_panel_res;
+            ui.label(format!(
+                "Size: {} x {}",
+                available.x as u32, available.y as u32
+            ));
+        });
     }
 }
 
@@ -126,7 +204,8 @@ impl Default for TemplateApp {
             n: 1,
             lines_enabled: false,
             scale_factor: 1.5,
-            scale_factor_str: "1.5".to_string(),
+            scale_factor_str: "1.5".to_owned(),
+            central_panel_res: Vec2::new(0.0, 0.0),
         }
     }
 }
@@ -135,52 +214,17 @@ impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.set_pixels_per_point(self.scale_factor);
 
+        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            self.add_header(ui);
+        });
+
+        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
+            self.add_footer(ui);
+        });
+
+        // Add circle panel last since its dimensions are calculated based on remaining space
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.label(format!("Choose a number between 1 and {MAX_PIECES}:"));
-                    ui.add(egui::Slider::new(&mut self.n, 1..=1000).logarithmic(true));
-
-                    ui.separator();
-
-                    if ui.button("➕").clicked() && self.n < MAX_PIECES {
-                        self.n += 1;
-                    };
-                    if ui.button("➖").clicked() && self.n > 1 {
-                        self.n -= 1;
-                    };
-
-                    ui.separator();
-
-                    if ui.button("Toggle Lines").clicked() {
-                        self.lines_enabled = !self.lines_enabled;
-                    };
-
-                    #[cfg(not(target_arch = "wasm32"))]
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Quit").clicked() {
-                            process::exit(0);
-                        };
-                    });
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_sized(
-                            [40.0, 20.0],
-                            egui::TextEdit::singleline(&mut self.scale_factor_str),
-                        );
-                        if let Ok(scale) = self.scale_factor_str.parse::<f32>() {
-                            if (0.5..=4.0).contains(&scale) {
-                                self.scale_factor = scale;
-                            }
-                        }
-                        ui.label("Scaling:");
-                    });
-                });
-                ui.add_space(4.0);
-            });
-
-            self.draw_circle(ui);
+            self.add_circle(ui);
         });
     }
 }
