@@ -14,6 +14,8 @@ const MAX_PIECES: usize = 1000;
 pub struct TemplateApp {
     n: usize,
     lines_enabled: bool,
+    scale_factor: f32,
+    scale_factor_str: String,
 }
 
 impl TemplateApp {
@@ -37,7 +39,7 @@ impl TemplateApp {
         let square_rect = egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(side));
         let painter = ui.painter_at(square_rect);
         let center = square_rect.center();
-        let radius = side * 0.45;
+        let radius = side * 0.40;
 
         // radial lines with filled "slices"
         for i in 0..self.n {
@@ -122,39 +124,60 @@ impl Default for TemplateApp {
     fn default() -> Self {
         Self {
             n: 1,
-            lines_enabled: true,
+            lines_enabled: false,
+            scale_factor: 1.5,
+            scale_factor_str: "1.5".to_string(),
         }
     }
 }
 
 impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Looks better on hi-res screens
-        ctx.set_pixels_per_point(2.0);
+        ctx.set_pixels_per_point(self.scale_factor);
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(format!("Choose a number between 1 and {MAX_PIECES}:"));
-                ui.add(egui::Slider::new(&mut self.n, 1..=1000).logarithmic(true));
+            egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(format!("Choose a number between 1 and {MAX_PIECES}:"));
+                    ui.add(egui::Slider::new(&mut self.n, 1..=1000).logarithmic(true));
 
-                ui.separator();
+                    ui.separator();
 
-                if ui.button("➕").clicked() && self.n < MAX_PIECES {
-                    self.n += 1;
-                };
-                if ui.button("➖").clicked() && self.n > 1 {
-                    self.n -= 1;
-                };
+                    if ui.button("➕").clicked() && self.n < MAX_PIECES {
+                        self.n += 1;
+                    };
+                    if ui.button("➖").clicked() && self.n > 1 {
+                        self.n -= 1;
+                    };
 
-                ui.separator();
+                    ui.separator();
 
-                if ui.button("Toggle Lines").clicked() {
-                    self.lines_enabled = !self.lines_enabled;
-                };
-                #[cfg(not(target_arch = "wasm32"))]
-                if ui.button("Quit").clicked() {
-                    process::exit(0);
-                };
+                    if ui.button("Toggle Lines").clicked() {
+                        self.lines_enabled = !self.lines_enabled;
+                    };
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Quit").clicked() {
+                            process::exit(0);
+                        };
+                    });
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_sized(
+                            [40.0, 20.0],
+                            egui::TextEdit::singleline(&mut self.scale_factor_str),
+                        );
+                        if let Ok(scale) = self.scale_factor_str.parse::<f32>() {
+                            if (0.5..=4.0).contains(&scale) {
+                                self.scale_factor = scale;
+                            }
+                        }
+                        ui.label("Scaling:");
+                    });
+                });
+                ui.add_space(4.0);
             });
 
             self.draw_circle(ui);
