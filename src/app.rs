@@ -191,7 +191,7 @@ impl TemplateApp {
         });
     }
 
-    fn add_circle(&mut self, ui: &Ui) {
+    fn add_circle(&self, ui: &Ui) {
         let rect = ui.available_rect_before_wrap();
         let side = rect.width().min(rect.height()) * 1.05;
         let square_rect = egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(side));
