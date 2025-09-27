@@ -122,7 +122,7 @@ impl TemplateApp {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.label(format!("Choose a number between 1 and {MAX_PIECES}:"));
-            ui.add(egui::Slider::new(&mut self.n, 1..=1000).logarithmic(true));
+            ui.add(egui::Slider::new(&mut self.n, 1..=MAX_PIECES).logarithmic(true));
 
             ui.separator();
             if ui.button("➕").clicked() && self.n < MAX_PIECES {
