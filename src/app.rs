@@ -4,24 +4,25 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use std::process;
 
 use eframe::egui::{self, Shape};
+// use egui::Vec2;
 use egui::text::LayoutJob;
-use egui::{Color32, Pos2, Stroke, TextFormat, Ui, Vec2};
+use egui::{Color32, Pos2, Stroke, Ui};
 use num2words::Num2Words;
+use serde::{Deserialize, Serialize};
 
 const MAX_PIECES: usize = 1000;
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
     n: usize,
     lines_enabled: bool,
     scale_factor: f32,
-    scale_factor_str: String,
-    central_panel_res: Vec2,
+    // central_panel_res: Vec2,
     color_scheme: ColorScheme,
 }
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 enum ColorScheme {
     Rainbow,
     Tableau,
@@ -93,7 +94,7 @@ fn color_text(text: &str, color_scheme: &ColorScheme) -> LayoutJob {
         job.append(
             &ch.to_string(),
             0.0,
-            TextFormat {
+            egui::TextFormat {
                 color,
                 ..Default::default()
             },
@@ -118,91 +119,85 @@ impl TemplateApp {
         }
     }
 
-    fn add_header(&mut self, ui: &mut Ui) {
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label(format!("Choose a number between 1 and {MAX_PIECES}:"));
-            ui.add(egui::Slider::new(&mut self.n, 1..=MAX_PIECES).logarithmic(true));
+    fn header_add_number_selector(&mut self, ui: &mut Ui) {
+        ui.label("How many slices?");
+        ui.add(egui::Slider::new(&mut self.n, 1..=MAX_PIECES).logarithmic(true));
+    }
 
-            ui.separator();
-            if ui.button("➕").clicked() && self.n < MAX_PIECES {
-                self.n += 1;
-            };
-            if ui.button("➖").clicked() && self.n > 1 {
-                self.n -= 1;
-            };
+    fn header_add_misc_buttons(&mut self, ui: &mut Ui) {
+        if ui.button("➖").clicked() && self.n > 1 {
+            self.n -= 1;
+        };
+        if ui.button("➕").clicked() && self.n < MAX_PIECES {
+            self.n += 1;
+        };
+        if ui.button("Toggle Lines").clicked() {
+            self.lines_enabled = !self.lines_enabled;
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        if ui.button("Quit").clicked() {
+            process::exit(0);
+        };
+    }
+    fn header_add_color_selector(&mut self, ui: &mut Ui) {
+        ui.label("Colors:");
+        ui.selectable_value(
+            &mut self.color_scheme,
+            ColorScheme::Rainbow,
+            color_text("Pinwheel", &ColorScheme::Rainbow),
+        );
+        ui.selectable_value(
+            &mut self.color_scheme,
+            ColorScheme::Tableau,
+            color_text("Tableau", &ColorScheme::Tableau),
+        );
+        ui.selectable_value(
+            &mut self.color_scheme,
+            ColorScheme::Blues,
+            color_text("Blues", &ColorScheme::Blues),
+        );
+        ui.selectable_value(
+            &mut self.color_scheme,
+            ColorScheme::Grays,
+            color_text("Grays", &ColorScheme::Grays),
+        );
+    }
 
-            ui.separator();
-            if ui.button("Toggle Lines").clicked() {
-                self.lines_enabled = !self.lines_enabled;
-            };
-
-            ui.separator();
-            ui.label("Color scheme:");
-            ui.selectable_value(
-                &mut self.color_scheme,
-                ColorScheme::Rainbow,
-                // rainbow_text(),
-                color_text("Pinwheel", &ColorScheme::Rainbow),
-            );
-            ui.selectable_value(
-                &mut self.color_scheme,
-                ColorScheme::Tableau,
-                // egui::RichText::new("Solid").color(Color32::DARK_RED),
-                color_text("Tableau", &ColorScheme::Tableau),
-            );
-            ui.selectable_value(
-                &mut self.color_scheme,
-                ColorScheme::Blues,
-                // egui::RichText::new("Blues").color(Color32::LIGHT_BLUE),
-                color_text("Blues", &ColorScheme::Blues),
-            );
-            ui.selectable_value(
-                &mut self.color_scheme,
-                ColorScheme::Grays,
-                // egui::RichText::new("Grays").color(Color32::GRAY),
-                color_text("Grays", &ColorScheme::Grays),
-            );
-
-            #[cfg(not(target_arch = "wasm32"))]
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Quit").clicked() {
-                    process::exit(0);
-                };
-            });
-
-            // scaling input value (temporary)
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_sized(
-                    [40.0, 20.0],
-                    egui::TextEdit::singleline(&mut self.scale_factor_str),
-                );
-                if let Ok(scale) = self.scale_factor_str.parse::<f32>() {
-                    if (0.5..=4.0).contains(&scale) {
-                        self.scale_factor = scale;
-                    }
-                }
-                ui.label("Scaling:");
-
-                // ui.separator();
-                // let available = ui.available_size();
-                // ui.label(format!(
-                //     "Size: {} x {}",
-                //     available.x.floor(),
-                //     available.y.floor()
-                // ));
-            });
+    fn add_header(&mut self, ui: &mut Ui, width: f32, height: f32) {
+        ui.group(|ui| {
+            if width >= height {
+                ui.horizontal_wrapped(|ui| {
+                    self.header_add_number_selector(ui);
+                    ui.separator();
+                    self.header_add_misc_buttons(ui);
+                    ui.separator();
+                    self.header_add_color_selector(ui);
+                });
+            } else {
+                ui.vertical(|ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        self.header_add_number_selector(ui);
+                    });
+                    ui.separator();
+                    ui.horizontal_wrapped(|ui| {
+                        self.header_add_misc_buttons(ui);
+                    });
+                    ui.separator();
+                    ui.horizontal_wrapped(|ui| {
+                        self.header_add_color_selector(ui);
+                    });
+                });
+            }
         });
-        ui.add_space(4.0);
     }
 
     fn add_circle(&mut self, ui: &Ui) {
         let rect = ui.available_rect_before_wrap();
-        let side = rect.width().min(rect.height());
+        let side = rect.width().min(rect.height()) * 1.05;
         let square_rect = egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(side));
         let painter = ui.painter_at(square_rect);
         let center = square_rect.center();
-        let radius = side * 0.45;
+        let radius = side * 0.42;
 
         // radial lines with filled "slices"
         for i in 0..self.n {
@@ -246,7 +241,7 @@ impl TemplateApp {
             }
 
             // ---- labels ----
-            let label_distance = radius + 20.0; // push labels outside the circle
+            let label_distance = radius + 15.0; // push labels outside the circle
             let label_angle =
                 -(i as f32) * (TAU / (self.n as f32)) + FRAC_PI_2 + (PI / (self.n as f32));
             let lx = center.x + label_distance * label_angle.cos();
@@ -268,11 +263,10 @@ impl TemplateApp {
 
         // ordinal text
         let painter = ui.painter_at(rect);
-        let x = rect.width() * 0.1;
-        let y = 100.0;
+        let pos = rect.lerp_inside(egui::Vec2::new(0.09, 0.09));
         painter.text(
-            Pos2::new(x, y),
-            egui::Align2::CENTER_CENTER,
+            pos,
+            egui::Align2::LEFT_CENTER,
             get_ordinal_text(self.n),
             egui::FontId::proportional(16.0),
             Color32::from_rgb(64, 224, 208),
@@ -289,22 +283,24 @@ impl TemplateApp {
         //     egui::FontId::proportional(14.0),
         //     Color32::from_rgb(50, 50, 50),
         // );
-        self.central_panel_res = Vec2::new(rect.width(), rect.height());
+        // self.central_panel_res = Vec2::new(rect.width(), rect.height());
 
         // center dot
         // painter.circle_filled(center, 2.0, Color32::from_rgb(220, 100, 100));
     }
 
-    fn add_footer(&self, ui: &mut Ui) {
-        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-            // Show window resolution so I can figure out good default scaling parameters.
-            let available = self.central_panel_res;
-            ui.label(format!(
-                "Size: {} x {}",
-                available.x as u32, available.y as u32
-            ));
-        });
-    }
+    // fn add_footer(&self, ui: &mut Ui) {
+    //     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+    //         // Show window resolution so I can figure out good default scaling parameters
+    //         let available = self.central_panel_res;
+    //         let scale = ui.pixels_per_point();
+    //         ui.label(format!(
+    //             "Size: {} x {}",
+    //             (available.x * scale) as u32,
+    //             (available.y * scale) as u32
+    //         ));
+    //     });
+    // }
 }
 
 impl Default for TemplateApp {
@@ -312,9 +308,8 @@ impl Default for TemplateApp {
         Self {
             n: 1,
             lines_enabled: false,
-            scale_factor: 1.5,
-            scale_factor_str: "1.5".to_owned(),
-            central_panel_res: Vec2::new(0.0, 0.0),
+            scale_factor: 2.0,
+            // central_panel_res: Vec2::new(0.0, 0.0),
             color_scheme: ColorScheme::Tableau,
         }
     }
@@ -322,15 +317,21 @@ impl Default for TemplateApp {
 
 impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let screen_rect = ctx.screen_rect();
+        let width = screen_rect.width();
+        let height = screen_rect.height();
+        self.scale_factor = if height > width { 3.0 } else { 2.0 };
         ctx.set_pixels_per_point(self.scale_factor);
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            self.add_header(ui);
-        });
+        egui::TopBottomPanel::top("top_panel")
+            .show_separator_line(false)
+            .show(ctx, |ui| {
+                self.add_header(ui, width, height);
+            });
 
-        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
-            self.add_footer(ui);
-        });
+        // egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
+        //     self.add_footer(ui);
+        // });
 
         // Add circle panel last since its dimensions are calculated based on remaining space
         egui::CentralPanel::default().show(ctx, |ui| {
